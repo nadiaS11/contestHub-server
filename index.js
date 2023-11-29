@@ -181,6 +181,19 @@ async function run() {
       res.send({ creator });
     });
 
+    //get participant
+    app.get("/participated-contest/:id", verifyToken, async (res, req) => {
+      const id = req.params.id;
+      const participantEmail = req.query.participant;
+      const query = { _id: new ObjectId(id) };
+      const findParticipant = await paymentCollection.findOne(query);
+      let participant = false;
+      if (findParticipant) {
+        participant = findParticipant.participant === participantEmail;
+      }
+      res.send({ participant });
+    });
+
     //post user data
     app.put("/users", async (req, res) => {
       const user = req.body;
@@ -380,12 +393,9 @@ async function run() {
       res.send(result);
     });
 
+    //get registered contests
     app.get("/user-payments", verifyToken, async (req, res) => {
       const participant = req.query.participant;
-      // const tokenEmail = req.user.email;
-      // if (email !== tokenEmail) {
-      //   return res.status(403).send({ message: "forbidden" });
-      // }
       const query = { participant: participant };
       const cursor = paymentCollection.find(query);
       const result = await cursor.toArray();
