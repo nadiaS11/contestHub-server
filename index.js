@@ -2,7 +2,7 @@ const express = require("express");
 require("dotenv").config();
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-// const stripe = require("stripe")(process.env.PAYMENT_KEY);
+const stripe = require("stripe")(process.env.PAYMENT_KEY);
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
@@ -358,7 +358,22 @@ async function run() {
       res.send(result);
     });
 
-    //post payment
+    //generate clientSecret for stripe
+    app.post("/create-payment-intent", verifyToken, async (req, res) => {
+      const { price } = req.body;
+      console.log(price);
+      const amount = parseFloat(price) * 100;
+      if (!price || amount < 1) return;
+      const { client_secret } = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+
+      res.send({ clientSecret: client_secret });
+    });
+
+    //save payment info
     app.post("/user-payments", async (req, res) => {
       const payment = req.body;
       const result = await paymentCollection.insertOne(payment);
@@ -366,16 +381,29 @@ async function run() {
     });
 
     app.get("/user-payments", verifyToken, async (req, res) => {
-      const email = req.query.email;
-      const tokenEmail = req.user.email;
-      if (email !== tokenEmail) {
-        return res.status(403).send({ message: "forbidden" });
-      }
-      const query = { email: email };
+      const participant = req.query.participant;
+      // const tokenEmail = req.user.email;
+      // if (email !== tokenEmail) {
+      //   return res.status(403).send({ message: "forbidden" });
+      // }
+      const query = { participant: participant };
       const cursor = paymentCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
     });
+
+    //increase participants count
+    app.patch("/contest/:id", async (req, res) => {
+      const id = req.params.id;
+      const participationCount = req.body.participationCount;
+      const query = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $inc: { participationCount: 1 },
+      };
+      const result = await contestCollection.updateOne(query, updateDoc);
+      res.send(result);
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
