@@ -64,7 +64,9 @@ async function run() {
     const createdContestCollection = await client
       .db("contestHubDB")
       .collection("createdContest");
-
+    const participantCollection = await client
+      .db("contestHubDB")
+      .collection("participants");
     //jwt access token
     app.post("/jwt", async (req, res) => {
       const userInfo = req.body;
@@ -424,7 +426,7 @@ async function run() {
         const creator = req.query.creator;
         console.log(creator);
         const query = { creator: creator };
-        const result = await paymentCollection
+        const participantResult = await paymentCollection
           .aggregate([
             {
               $match: { creator: creator },
@@ -440,10 +442,82 @@ async function run() {
           ])
           .toArray();
 
+        // if (!participantResult) {
+        //   res.send({ message: "No participants" });
+        // }
+
+        const existingParticipants = await participantCollection
+          .find({
+            _id: { $in: participantResult.map((group) => group._id) },
+          })
+          .toArray();
+        console.log(existingParticipants);
+
+        if (existingParticipants.length > 0) {
+          // If already exists, send the existing data
+          res.send(existingParticipants);
+        } else {
+          await participantCollection.insertMany(participantResult);
+
+          const insertedData = await participantCollection
+            .find({
+              _id: { $in: participantResult.map((group) => group._id) },
+            })
+            .toArray();
+
+          res.send(insertedData);
+        }
+      }
+    );
+
+    //post winner information from creator
+    app.patch(
+      "/selected-winner",
+      verifyToken,
+      verifyCreator,
+      async (req, res) => {
+        const contestName = req.body.contestName;
+        const winnerEmail = req.body.winnerEmail;
+        const findContest = await contestCollection.findOne({
+          contestName: contestName,
+        });
+        console.log({ email: winnerEmail });
+        const findUser = await userCollection.findOne({ email: winnerEmail });
+        console.log(findUser);
+
+        const filter = {
+          contestName: contestName,
+        };
+        const participantFilter = { _id: contestName };
+        console.log(findUser);
+        const updateDoc = {
+          $set: {
+            winnerName: findUser.name,
+            winnerImage: findUser.image,
+            winnerEmail: winnerEmail,
+          },
+        };
+
+        const updateParticipants = await participantCollection.updateOne(
+          participantFilter,
+          updateDoc
+        );
+
+        const result = await contestCollection.updateOne(filter, updateDoc);
+
         res.send(result);
       }
     );
 
+    app.get("/contest-won-by-user", verifyToken, async (req, res) => {
+      const winnerEmail = req.query.winnerEmail;
+      const result = await participantCollection
+        .find({
+          winnerEmail: winnerEmail,
+        })
+        .toArray();
+      res.send(result);
+    });
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
