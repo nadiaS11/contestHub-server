@@ -391,6 +391,33 @@ async function run() {
     //save payment info
     app.post("/user-payments", async (req, res) => {
       const payment = req.body;
+      const findPayment = await paymentCollection.findOne({
+        contestName: payment.contestName,
+        participant: payment.participant,
+      });
+      if (findPayment) {
+        return res.send({ message: "already paid for this" });
+      }
+      const options = { upsert: true };
+
+      const participantQuery = { _id: payment.contestName };
+      const findContest = await participantCollection.findOne(participantQuery);
+
+      if (!findContest) {
+        const saveParticipants = await participantCollection.insertOne({
+          _id: payment.contestName,
+          participants: [payment.participant],
+          creator: payment.creator,
+        });
+      } else {
+        const updateDoc = {
+          $addToSet: {
+            participants: payment.participant,
+          },
+        };
+
+        await participantCollection.updateOne(participantQuery, updateDoc);
+      }
       const result = await paymentCollection.insertOne(payment);
       res.send(result);
     });
@@ -423,50 +450,9 @@ async function run() {
       verifyToken,
       verifyCreator,
       async (req, res) => {
-        const creator = req.query.creator;
-        console.log(creator);
-        const query = { creator: creator };
-        const participantResult = await paymentCollection
-          .aggregate([
-            {
-              $match: { creator: creator },
-            },
-            {
-              $group: {
-                _id: "$contestName",
-                participants: {
-                  $push: "$participant",
-                },
-              },
-            },
-          ])
-          .toArray();
-
-        // if (!participantResult) {
-        //   res.send({ message: "No participants" });
-        // }
-
-        const existingParticipants = await participantCollection
-          .find({
-            _id: { $in: participantResult.map((group) => group._id) },
-          })
-          .toArray();
-        console.log(existingParticipants);
-
-        if (existingParticipants.length > 0) {
-          // If already exists, send the existing data
-          res.send(existingParticipants);
-        } else {
-          await participantCollection.insertMany(participantResult);
-
-          const insertedData = await participantCollection
-            .find({
-              _id: { $in: participantResult.map((group) => group._id) },
-            })
-            .toArray();
-
-          res.send(insertedData);
-        }
+        const filter = { creator: req.query.creator };
+        const result = await participantCollection.find(filter).toArray();
+        res.send(result);
       }
     );
 
