@@ -320,9 +320,9 @@ async function run() {
       verifyToken,
       verifyCreator,
       async (req, res) => {
-        const email = req.query.email;
+        const email = req.query.creator;
 
-        const query = { email: email };
+        const query = { creator: email };
         const result = await createdContestCollection.find(query).toArray();
         res.send(result);
       }
@@ -413,6 +413,36 @@ async function run() {
       const result = await contestCollection.updateOne(query, updateDoc);
       res.send(result);
     });
+
+    //get submitted participants for creator
+
+    app.get(
+      "/submitted-participants",
+      verifyToken,
+      verifyCreator,
+      async (req, res) => {
+        const creator = req.query.creator;
+        console.log(creator);
+        const query = { creator: creator };
+        const result = await paymentCollection
+          .aggregate([
+            {
+              $match: { creator: creator },
+            },
+            {
+              $group: {
+                _id: "$contestName",
+                participants: {
+                  $push: "$participant",
+                },
+              },
+            },
+          ])
+          .toArray();
+
+        res.send(result);
+      }
+    );
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
